@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Pocket Miku – Web MIDI Controller</title>
+  <style>
+    :root {
+      --bg: #0f172a;        /* slate-900 */
+      --panel: #111827;     /* gray-900 */
+      --muted: #94a3b8;     /* slate-400 */
+      --text: #e5e7eb;      /* gray-200 */
+      --accent: #22d3ee;    /* cyan-400 */
+      --accent-2: #a78bfa;  /* violet-400 */
+      --danger: #fb7185;    /* rose-400 */
+      --ok: #34d399;        /* emerald-400 */
+    }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Apple Color Emoji", "Segoe UI Emoji"; background: var(--bg); color: var(--text); }
+    header { padding: 16px; display:flex; gap:12px; align-items:center; justify-content:space-between; background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0)); border-bottom: 1px solid rgba(255,255,255,0.08); position: sticky; top:0; z-index:5; }
+    h1 { font-size: 18px; margin:0; letter-spacing: 0.3px; }
+    .pill { padding:6px 10px; border:1px solid rgba(255,255,255,0.12); border-radius: 999px; font-size:12px; color: var(--muted);} 
+    .wrap { max-width: 1200px; margin: 0 auto; padding: 16px; display:grid; grid-template-columns: 360px 1fr; gap: 16px; }
+    .panel { background: var(--panel); border: 1px solid rgba(255,255,255,0.08); border-radius: 14px; padding: 14px; box-shadow: 0 10px 30px rgba(0,0,0,0.2); }
+    .row { display:flex; gap: 10px; align-items:center; flex-wrap: wrap; }
+    label { font-size: 12px; color: var(--muted); }
+    select, input[type="number"], input[type="text"], input[type="checkbox"] { background: #0b1220; color: var(--text); border:1px solid rgba(255,255,255,0.12); padding:8px 10px; border-radius: 10px; font-size: 13px; }
+    button { background: #0b1220; color: var(--text); border:1px solid rgba(255,255,255,0.14); padding:8px 12px; border-radius: 12px; cursor:pointer; font-weight:600; }
+    button:hover { border-color: var(--accent); }
+    .btn-primary { background: linear-gradient(135deg, #0b1220, #111b2f); border-color: var(--accent); box-shadow: inset 0 0 0 1px rgba(34,211,238,0.35); }
+    .btn-danger { border-color: var(--danger); color:#fecdd3; }
+    .grid { display:grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+    .slider { display:grid; grid-template-columns: 1fr 60px; gap:8px; align-items:center; }
+    input[type="range"] { width: 100%; accent-color: var(--accent); }
+
+    .kbd { background:#0b1220; border:1px solid rgba(255,255,255,0.12); border-radius:10px; padding:10px; }
+    .piano { display:flex; height: 160px; user-select:none; }
+    .key { position:relative; width: 46px; border:1px solid #1f2937; background: linear-gradient(#f8fafc,#d1d5db); border-radius:0 0 8px 8px; margin:0 1px; }
+    .key.active { box-shadow: 0 0 0 2px var(--accent) inset; }
+    .key.black { width: 30px; height: 100px; background: linear-gradient(#111827,#374151); position:absolute; top:0; right:-15px; z-index:2; border-radius:0 0 6px 6px; }
+    .piano-wrap { position:relative; background:#0b1220; border-radius:14px; padding:14px; border:1px solid rgba(255,255,255,0.1) }
+
+    .wheel { width: 48px; height: 140px; background:#0b1220; border:1px solid rgba(255,255,255,0.12); border-radius:14px; position:relative; margin-left:10px; }
+    .thumb { position:absolute; left:4px; right:4px; height: 8px; background: var(--accent-2); border-radius: 8px; box-shadow: 0 0 0 1px rgba(255,255,255,0.2) inset; }
+    .small { font-size:12px; color: var(--muted); }
+    .notice { font-size:12px; color:#f0abfc; }
+    .tag { font-size:11px; padding:2px 8px; border-radius:999px; border:1px solid rgba(255,255,255,0.2); color:var(--muted); }
+    .footer { color: var(--muted); font-size: 12px; padding: 10px 16px 20px; text-align:center; }
+
+    /* XY Pad */
+    .xy-pad { position:relative; width:100%; height:300px; background:#0b1220; border:1px solid rgba(255,255,255,0.15); border-radius:12px; cursor:crosshair; }
+    .xy-thumb { position:absolute; width:20px; height:20px; border-radius:50%; background:var(--accent); transform:translate(-50%,-50%); box-shadow: 0 0 0 2px rgba(255,255,255,0.15) inset; }
+    .cc-grid { display:grid; grid-template-columns: repeat(2, 1fr); gap:10px; }
+
+    @media (max-width: 1080px) { .wrap { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Pocket Miku – Web MIDI Controller <span class="pill">NSX‑39 / NSX‑1</span></h1>
+    <div class="row">
+      <button id="connect" class="btn-primary">Connect MIDI (sysex)</button>
+      <span id="status" class="pill">Not connected</span>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <!-- LEFT: Routing & performance controls -->
+    <section class="panel">
+      <div class="grid">
+        <div>
+          <label>Output device</label>
+          <select id="outputSelect"></select>
+        </div>
+        <div>
+          <label>Channel</label>
+          <select id="channel"></select>
+          <div class="small">Ch.1 = eVocaloid voice, 2–16 = GM/XG tones</div>
+        </div>
+      </div>
+      <div class="grid" style="margin-top:12px;">
+        <div class="slider">
+          <label>Velocity</label>
+          <input id="velocity" type="range" min="1" max="127" value="96" />
+        </div>
+        <div class="slider">
+          <label>Octave</label>
+          <input id="octave" type="range" min="-2" max="2" value="0" />
+        </div>
+      </div>
+
+      <div class="grid" style="margin-top:12px;">
+        <div class="slider">
+          <label>CC1 Mod</label>
+          <input data-cc="1" class="cc" type="range" min="0" max="127" value="0" />
+        </div>
+        <div class="slider">
+          <label>CC11 Expression</label>
+          <input data-cc="11" class="cc" type="range" min="0" max="127" value="100" />
+        </div>
+        <div class="slider">
+          <label>CC7 Volume</label>
+          <input data-cc="7" class="cc" type="range" min="0" max="127" value="100" />
+        </div>
+        <div class="slider">
+          <label>CC10 Pan</label>
+          <input data-cc="10" class="cc" type="range" min="0" max="127" value="64" />
+        </div>
+      </div>
+
+      <div class="grid" style="margin-top:12px;">
+        <div class="slider">
+          <label>CC91 Reverb</label>
+          <input data-cc="91" class="cc" type="range" min="0" max="127" value="40" />
+        </div>
+        <div class="slider">
+          <label>CC93 Chorus</label>
+          <input data-cc="93" class="cc" type="range" min="0" max="127" value="24" />
+        </div>
+      </div>
+
+      <div class="row" style="margin-top:10px; justify-content:space-between;">
+        <div class="row" style="gap:8px;">
+          <button id="sustain" data-on="0">Sustain (CC64)</button>
+          <button id="mono">Mono</button>
+          <button id="poly">Poly</button>
+        </div>
+        <div class="row" style="gap:8px;">
+          <label>Program</label>
+          <input id="program" type="number" min="0" max="127" value="0" style="width:88px;" />
+          <button id="setProgram">Send</button>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-top:12px; background:#0b1220;">
+        <div class="row" style="justify-content:space-between; align-items:flex-start;">
+          <div>
+            <div class="row" style="gap:6px; align-items:center;">
+              <strong>Harmony helper</strong><span class="tag">client‑side</span>
+            </div>
+            <div class="small">Adds a second note at an interval. Useful if lyrics are loaded on Ch.1.</div>
+          </div>
+          <div class="row" style="gap:8px;">
+            <label>Interval</label>
+            <select id="hInterval">
+              <option value="0">Off</option>
+              <option value="4">+Maj3 (+4)</option>
+              <option value="3">+Min3 (+3)</option>
+              <option value="7">+5th (+7)</option>
+              <option value="-5">-4th (-5)</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-top:12px; background:#0b1220;">
+        <div class="row" style="justify-content:space-between; align-items:flex-start;">
+          <div>
+            <div class="row" style="gap:6px; align-items:center;">
+              <strong>SysEx tools</strong><span class="tag">advanced</span>
+            </div>
+            <div class="small">Grant <em>sysex</em> permission to send raw NSX‑1 messages (lyrics, etc.). Enter hex like: <code>F0 43 79 ... F7</code></div>
+          </div>
+        </div>
+        <div class="row" style="margin-top:8px; gap:8px;">
+          <input id="sysexHex" type="text" placeholder="F0 43 79 09 ... F7" />
+          <button id="sendSysex">Send SysEx</button>
+        </div>
+      </div>
+
+      <div style="margin-top:10px;" class="small">
+        Keyboard: Z/S/X/D/C/V/G/B/H/N/J/M for white/black keys; arrows change octave; Space = sustain.
+      </div>
+    </section>
+
+    <!-- RIGHT: Keyboard & wheels + XY PAD -->
+    <section class="panel kbd">
+      <div class="row" style="align-items:flex-start;">
+        <div class="piano-wrap" style="flex:1;">
+          <div id="piano" class="piano" aria-label="piano"></div>
+        </div>
+        <div>
+          <div class="row" style="gap:10px;">
+            <div class="wheel" id="pitch"><div class="thumb" style="top:66px;"></div></div>
+            <div class="wheel" id="mod"><div class="thumb" style="top:66px;"></div></div>
+          </div>
+          <div class="row" style="gap:16px; justify-content:center; margin-top:6px;">
+            <span class="small">Pitch Bend</span>
+            <span class="small">Mod Wheel</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-top:14px; background:#0b1220;">
+        <div class="row" style="justify-content:space-between; align-items:center;">
+          <strong>XY Pad (Kaoss‑style)</strong>
+          <div class="row" style="gap:8px;">
+            <label><input type="checkbox" id="xEnable" checked /> X on</label>
+            <label><input type="checkbox" id="yEnable" checked /> Y on</label>
+            <label><input type="checkbox" id="xyHold" /> Hold after release</label>
+            <label><input type="checkbox" id="xyReset" /> Reset on release</label>
+          </div>
+        </div>
+        <div id="xyPad" class="xy-pad" style="margin-top:8px;">
+          <div id="xyThumb" class="xy-thumb"></div>
+        </div>
+        <div class="row" style="margin-top:8px; gap:12px;">
+          <div class="row" style="gap:6px;">
+            <label>X →</label>
+            <select id="xCC">
+              <option value="1">CC1 Mod</option>
+              <option value="7">CC7 Volume</option>
+              <option value="10">CC10 Pan</option>
+              <option value="11">CC11 Expression</option>
+              <option value="71">CC71 Harmonic</option>
+              <option value="72">CC72 Release</option>
+              <option value="73">CC73 Attack</option>
+              <option value="74" selected>CC74 Brightness</option>
+              <option value="91">CC91 Reverb</option>
+              <option value="93">CC93 Chorus</option>
+            </select>
+          </div>
+          <div class="row" style="gap:6px;">
+            <label>Y →</label>
+            <select id="yCC">
+              <option value="1" selected>CC1 Mod</option>
+              <option value="7">CC7 Volume</option>
+              <option value="10">CC10 Pan</option>
+              <option value="11">CC11 Expression</option>
+              <option value="71">CC71 Harmonic</option>
+              <option value="72">CC72 Release</option>
+              <option value="73">CC73 Attack</option>
+              <option value="74">CC74 Brightness</option>
+              <option value="91">CC91 Reverb</option>
+              <option value="93">CC93 Chorus</option>
+            </select>
+          </div>
+        </div>
+        <div class="small" style="margin-top:6px;">Drag or touch to send CCs. Enable/disable axes, choose whether values hold or reset on release. X=left→right 0..127, Y=bottom→top 0..127.</div>
+      </div>
+    </section>
+  </main>
+
+  <div class="footer">Built for Pocket Miku (NSX‑39). Use Ch.1 for eVocaloid; load lyrics via SysEx or the official app. Web MIDI requires HTTPS and a user gesture to connect.</div>
+
+  <script>
+    // ====== MIDI CORE ======
+    let midi = null;
+    let output = null;
+    let outputs = [];
+    let channel = 0; // 0-based for wire format; UI shows 1..16
+    let velocity = 96;
+    let octave = 0;
+    let heldNotes = new Map(); // key -> {note, harmonyNote}
+    let harmony = 0; // semitones
+
+    const $ = (id) => document.getElementById(id);
+    const status = $("status");
+
+    function logStatus(txt, good=false) {
+      status.textContent = txt;
+      status.style.borderColor = good ? "var(--ok)" : "rgba(255,255,255,0.2)";
+      status.style.color = good ? "#dcfce7" : "var(--muted)";
+    }
+
+    $("connect").addEventListener("click", async () => {
+      try {
+        midi = await navigator.requestMIDIAccess({ sysex: true });
+        setUpOutputs();
+        midi.onstatechange = setUpOutputs;
+        logStatus("MIDI ready", true);
+      } catch (e) {
+        console.error(e);
+        logStatus("MIDI denied (no sysex?)");
+      }
+    });
+
+    function setUpOutputs() {
+      outputs = Array.from(midi.outputs.values());
+      const sel = $("outputSelect");
+      sel.innerHTML = "";
+      outputs.forEach((o, idx) => {
+        const opt = document.createElement("option");
+        opt.value = idx; opt.textContent = `${o.name} (${o.manufacturer || 'MIDI'})`;
+        sel.appendChild(opt);
+      });
+      if (outputs.length) { sel.value = 0; output = outputs[0]; }
+    }
+
+    $("outputSelect").addEventListener("change", e => { const idx = +e.target.value; output = outputs[idx]; });
+
+    // Channel select 1..16
+    const chSel = $("channel");
+    for (let i=1;i<=16;i++){ const o=document.createElement('option'); o.value=i-1; o.textContent=i; chSel.appendChild(o); }
+    chSel.value = 0;
+    chSel.addEventListener("change", e => channel = +e.target.value);
+
+    // Velocity & octave
+    $("velocity").addEventListener("input", e => velocity = +e.target.value);
+    $("octave").addEventListener("input", e => { octave = +e.target.value; renderPiano(); });
+
+    // CC sliders
+    document.querySelectorAll(".cc").forEach(el => {
+      el.addEventListener("input", e => sendCC(+e.target.dataset.cc, +e.target.value));
+    });
+
+    // Sustain toggle
+    $("sustain").addEventListener("click", e => {
+      const on = e.target.getAttribute('data-on') === '1' ? 0 : 1;
+      e.target.setAttribute('data-on', on);
+      e.target.style.borderColor = on ? 'var(--accent)' : 'rgba(255,255,255,0.14)';
+      sendCC(64, on ? 127 : 0);
+    });
+
+    // Mono/Poly quick helpers
+    $("mono").addEventListener("click", () => sendCC(126, 1));
+    $("poly").addEventListener("click", () => sendCC(127, 1));
+
+    // Program change (for GM/XG parts on ch2–16)
+    $("setProgram").addEventListener("click", () => {
+      const p = Math.max(0, Math.min(127, +$("program").value||0));
+      sendProgram(p);
+    });
+
+    // Harmony interval
+    $("hInterval").addEventListener("change", e => harmony = +e.target.value);
+
+    // SysEx sender
+    $("sendSysex").addEventListener("click", () => {
+      if (!output) return;
+      const txt = $("sysexHex").value.trim();
+      if (!txt) return;
+      try {
+        const bytes = txt.split(/\s+/).map(h => parseInt(h, 16));
+        output.send(bytes);
+      } catch (e) { alert("Bad hex"); }
+    });
+
+    // ====== MIDI helpers ======
+    function chStatus(base){ return base | (channel & 0x0f); }
+    function sendCC(cc, val){ if (!output) return; output.send([ chStatus(0xB0), cc & 0x7f, val & 0x7f ]); }
+    function sendProgram(num){ if (!output) return; output.send([ chStatus(0xC0), num & 0x7f ]); }
+    function sendNoteOn(nn, vel){ if (!output) return; output.send([ chStatus(0x90), nn & 0x7f, vel & 0x7f ]); }
+    function sendNoteOff(nn){ if (!output) return; output.send([ chStatus(0x80), nn & 0x7f, 0 ]); }
+    function sendPitch(bend){ // bend: -8192..+8191
+      if (!output) return;
+      const v = bend + 8192; const lsb = v & 0x7f; const msb = (v >> 7) & 0x7f;
+      output.send([ chStatus(0xE0), lsb, msb ]);
+    }
+
+    // ====== Piano UI ======
+    const pianoEl = $("piano");
+    const WHITE = [0,2,4,5,7,9,11];
+    const BLACK_OFFSETS = {0:1, 2:3, 5:6, 7:8, 9:10};
+
+    const START_NOTE = 60; // middle C
+    const NUM_WHITES = 14; // ~2 octaves
+
+    function midiNoteForWhiteIndex(i){
+      const octaveOffset = Math.floor(i / 7) * 12;
+      const scaleIndex = i % 7;
+      return START_NOTE + WHITE[scaleIndex] + octaveOffset + (octave*12);
+    }
+
+    function renderPiano(){
+      pianoEl.innerHTML = "";
+      for (let i=0;i<NUM_WHITES;i++){
+        const w = document.createElement('div');
+        w.className = 'key white';
+        w.dataset.note = midiNoteForWhiteIndex(i);
+        pianoEl.appendChild(w);
+        if (BLACK_OFFSETS.hasOwnProperty(WHITE[i%7])){
+          const b = document.createElement('div');
+          b.className = 'key black';
+          b.dataset.note = (+w.dataset.note)+1; // sharpened
+          w.appendChild(b);
+        }
+      }
+    }
+    renderPiano();
+
+    function press(note){
+      if (heldNotes.has(note)) return;
+      heldNotes.set(note, {note, harmonyNote: null});
+      sendNoteOn(note, velocity);
+      if (harmony !== 0){
+        const h = note + harmony;
+        heldNotes.get(note).harmonyNote = h;
+        sendNoteOn(h, Math.max(1, Math.min(127, Math.round(velocity*0.9))));
+      }
+    }
+    function release(note){
+      const rec = heldNotes.get(note);
+      if (!rec) return;
+      sendNoteOff(note);
+      if (rec.harmonyNote !== null) sendNoteOff(rec.harmonyNote);
+      heldNotes.delete(note);
+    }
+
+    // Mouse / touch piano
+    pianoEl.addEventListener('mousedown', e => {
+      const key = e.target.closest('.key'); if (!key) return; key.classList.add('active'); press(+key.dataset.note);
+    });
+    window.addEventListener('mouseup', () => {
+      document.querySelectorAll('.key.active').forEach(k => { k.classList.remove('active'); release(+k.dataset.note); });
+    });
+    pianoEl.addEventListener('mouseover', e => {
+      if (e.buttons !== 1) return; const key = e.target.closest('.key'); if (!key) return; key.classList.add('active'); press(+key.dataset.note);
+    });
+    pianoEl.addEventListener('mouseleave', () => {
+      document.querySelectorAll('.key.active').forEach(k => { k.classList.remove('active'); release(+k.dataset.note); });
+    });
+
+    // Pitch & Mod wheels
+    function setupWheel(id, onChange){
+      const el = $(id); const thumb = el.querySelector('.thumb');
+      const H = el.clientHeight - 8; const centerY = H/2 - 4; let active=false; function setPos(y){ thumb.style.top = `${Math.max(4, Math.min(H-4, y))}px`; }
+      setPos(centerY);
+      function valFromY(y){ const t = (y - 4) / (H - 8); return 1 - t; } // 0..1
+      el.addEventListener('mousedown', e => { active=true; setPos(e.offsetY); onChange(valFromY(e.offsetY)); });
+      window.addEventListener('mousemove', e => { if(!active) return; const r = el.getBoundingClientRect(); const y = e.clientY - r.top; setPos(y); onChange(valFromY(y)); });
+      window.addEventListener('mouseup', () => { if(!active) return; active=false; if(id==='pitch'){ setPos(centerY); onChange(0.5);} });
+      el.addEventListener('touchstart', e => { const t=e.touches[0]; const r=el.getBoundingClientRect(); const y=t.clientY-r.top; setPos(y); onChange(valFromY(y)); e.preventDefault(); }, {passive:false});
+      el.addEventListener('touchmove', e => { const t=e.touches[0]; const r=el.getBoundingClientRect(); const y=t.clientY-r.top; setPos(y); onChange(valFromY(y)); e.preventDefault(); }, {passive:false});
+      el.addEventListener('touchend', () => { if(id==='pitch'){ setPos(centerY); onChange(0.5);} });
+    }
+    setupWheel('pitch', v => { const pb = Math.round((v-0.5)*2*8191); sendPitch(pb); });
+    setupWheel('mod', v => { const cc = Math.round(v*127); sendCC(1, cc); const el = document.querySelector('input[data-cc="1"]'); if(el) el.value = cc; });
+
+    // Computer keyboard piano
+    const keyMap = { 'z':0, 's':1, 'x':2, 'd':3, 'c':4, 'v':5, 'g':6, 'b':7, 'h':8, 'n':9, 'j':10, 'm':11, ',':12, 'q':12, '2':13, 'w':14, '3':15, 'e':16, 'r':17, '5':18, 't':19, '6':20, 'y':21, '7':22, 'u':23 };
+    window.addEventListener('keydown', e => {
+      if (e.repeat) return;
+      if (e.key === ' ') { e.preventDefault(); sendCC(64, 127); $("sustain").setAttribute('data-on','1'); $("sustain").style.borderColor='var(--accent)'; return; }
+      if (e.key === 'ArrowUp') { $("octave").value = Math.min(2, +$("octave").value + 1); octave = +$("octave").value; renderPiano(); return; }
+      if (e.key === 'ArrowDown') { $("octave").value = Math.max(-2, +$("octave").value - 1); octave = +$("octave").value; renderPiano(); return; }
+      const off = keyMap[e.key.toLowerCase()]; if (off !== undefined){ const note = 60 + off + octave*12; press(note); highlightKey(note, true); }
+    });
+    window.addEventListener('keyup', e => {
+      if (e.key === ' ') { sendCC(64, 0); $("sustain").setAttribute('data-on','0'); $("sustain").style.borderColor='rgba(255,255,255,0.14)'; return; }
+      const off = keyMap[e.key.toLowerCase()]; if (off !== undefined){ const note = 60 + off + octave*12; release(note); highlightKey(note, false); }
+    });
+
+    function highlightKey(note, on){
+      const k = document.querySelector(`.key[data-note="${note}"]`) || document.querySelector(`.key .key[data-note="${note}"]`);
+      if (!k) return; if (on) k.classList.add('active'); else k.classList.remove('active');
+    }
+
+    // ====== XY PAD ======
+    const xyPad = $("xyPad");
+    const xyThumb = $("xyThumb");
+    const xSel = $("xCC");
+    const ySel = $("yCC");
+    const xEnable = $("xEnable");
+    const yEnable = $("yEnable");
+    const xyHold = $("xyHold");
+    const xyReset = $("xyReset");
+
+    let dragging = false;
+    function sendXYFromClient(x, y){
+      const r = xyPad.getBoundingClientRect();
+      const xVal = Math.round((x / r.width) * 127);
+      const yVal = Math.round((1 - (y / r.height)) * 127);
+      if (xEnable.checked) sendCC(+xSel.value, xVal);
+      if (yEnable.checked) sendCC(+ySel.value, yVal);
+    }
+    function positionThumb(x, y){ xyThumb.style.left = x+"px"; xyThumb.style.top = y+"px"; }
+    function clampPad(x, y){ const r=xyPad.getBoundingClientRect(); return [ Math.max(0, Math.min(r.width, x)), Math.max(0, Math.min(r.height, y)) ]; }
+
+    function updateXY(e){ const r=xyPad.getBoundingClientRect(); const [x,y] = clampPad(e.clientX - r.left, e.clientY - r.top); positionThumb(x,y); sendXYFromClient(x,y); }
+
+    xyPad.addEventListener('mousedown', e => { dragging=true; updateXY(e); });
+    window.addEventListener('mousemove', e => { if(dragging) updateXY(e); });
+    window.addEventListener('mouseup', () => { if(!dragging) return; dragging=false; const r=xyPad.getBoundingClientRect(); if (xyReset.checked) { positionThumb(r.width/2, r.height/2); if (!xyHold.checked) { if (xEnable.checked) sendCC(+xSel.value, 0); if (yEnable.checked) sendCC(+ySel.value, 0); } } });
+
+    xyPad.addEventListener('touchstart', e => { dragging=true; const t=e.touches[0]; updateXY(t); }, {passive:true});
+    xyPad.addEventListener('touchmove', e => { if(!dragging) return; const t=e.touches[0]; updateXY(t); }, {passive:true});
+    xyPad.addEventListener('touchend', () => { if(!dragging) return; dragging=false; const r=xyPad.getBoundingClientRect(); if (xyReset.checked) { positionThumb(r.width/2, r.height/2); if (!xyHold.checked) { if (xEnable.checked) sendCC(+xSel.value, 0); if (yEnable.checked) sendCC(+ySel.value, 0); } } });
+
+    // Center thumb initially
+    (function(){ const rObserver = new ResizeObserver(() => { const r=xyPad.getBoundingClientRect(); positionThumb(r.width/2, r.height/2); }); rObserver.observe(xyPad); })();
+  </script>
+</body>
+</html>
